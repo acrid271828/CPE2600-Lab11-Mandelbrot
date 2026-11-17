@@ -1,6 +1,6 @@
 
 typedef struct {
-    char outfile[20];
+    char outfile[30];
 	double xcenter;
 	double ycenter;
 	double xscale;
