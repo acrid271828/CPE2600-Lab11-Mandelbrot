@@ -1,3 +1,10 @@
+/**********
+ * batch_runner.c
+ * Alex Grant
+ * 11/18/2026
+ * Creates a zooming video of the madelbrot set
+ * to compile: make
+ **********/
 #include <stdio.h>
 #include <math.h>
 #include <stdlib.h>
