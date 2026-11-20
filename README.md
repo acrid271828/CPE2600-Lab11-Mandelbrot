@@ -34,19 +34,7 @@ make
 where `<num>` is how many processes to use. The resulting video file will be named "mandel....mpg" with the framerate listed.
 
 ## Implementation Details
-To run multiprocessing, the program loops `fork()` a number of times equal to `ceil(log2(n_procs))`, so `2^(ceil(log2(n_procs))) >= n_procs` processes are running, indexed starting from 0 (parent). Excess processes created from this operation return immediatly and don't do any work. Each process uses it's index to and generates images for that fraction of the dataset.
-
-For example,
-```
-n_procs = 10
-N_IMGS = 50
-```
-- `Fork()` runs 4 times, creating 16 processes (as 8 would be too few)
-- 6 processes (indexed 10-15 inclusive) return immediately
-- process index 0 (true parent) calculates `0/10 --> 1/10` of the dataset, the first 5 images.
-- ... process index 2 (`0b0010`: parent's child's parent's parent) calculates `2/10 --> 3/10` of the dataset, images 11 to 15
-
-After all processes finish, the true parent runs ffmpeg to generate the video file.
+To run multiprocessing, the program uses a semaphore to track the number of processes that need to be dispatched. The parent runs in a loop, pulling the semaphore and dispatching a child to compute one image. When the child finishes, it posts back to the semaphore so another can be dispatched in its place.
 
 ## Results
 Increasing the number of processes approximately inversly scales the runtime, except minimal gains going past the number of processors on the CPU (14). The 20fps runs took over double to time on each # of processors despite being exactly double the amount of images.

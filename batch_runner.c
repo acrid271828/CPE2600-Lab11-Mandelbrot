@@ -5,16 +5,19 @@
  * Creates a zooming video of the madelbrot set
  * to compile: make
  **********/
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <math.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/wait.h>
+#include <sys/mman.h>
+#include <semaphore.h>
 #include "mandel.h"
 // A slight modification Myrberg-Feigenbaum point (x= -1.401155189116)
 #define FOCAL_X -1.40116569029
 #define DEFAULT_SCALE 4
-#define DECAY_RATE .75
+#define DECAY_RATE .65
 #define DEFAULT_N_PROCS 1
 #define N_IMGS 50
 #define VIDEO_LENGTH 5
@@ -26,6 +29,8 @@ int main(int argc, char* argv[]){
         printf("Number of processes must be positive (is %d)\n", n_procs);
         exit(1);
     }
+    sem_t* active_procs = mmap(NULL, sizeof(sem_t), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANON, -1, 0);
+    sem_init(active_procs, 1, n_procs);
     MandelSpecs specs = {
         .outfile = "mandel.jpg",
         .xcenter = 0,
@@ -37,38 +42,33 @@ int main(int argc, char* argv[]){
         .max = 1000,
     };
 
-    int pid = 0;
-    for(int e = 0; e < log2(n_procs); e++){
-        int id = fork();
-        if (id == -1){
-            printf("fork error\n");
+    for(int img = 1; img <= N_IMGS; img++){
+        specs.xscale *= DECAY_RATE;
+        sem_wait(active_procs);
+        int pid = fork();
+
+        if (pid == -1){
+            printf("fork failure\n");
+            exit(1);
+        } else if (pid == 0){
+            specs.xcenter = FOCAL_X - FOCAL_X * specs.xscale / DEFAULT_SCALE;
+            sprintf(specs.outfile, "imgs/mandel-%d.jpg", img);
+            generate(specs);
+            sem_post(active_procs);
             exit(1);
         }
-        pid |= (id == 0) << e;
-    }
-    if (pid >= n_procs){
-        exit(0); // excess children not needed
     }
 
-    int start = (pid * N_IMGS / n_procs) + 1;
-    specs.xscale *= pow(DECAY_RATE, start - 1);
-    for(int i = start; i < ((pid+1) * N_IMGS / n_procs) + 1; i++){
-        sprintf(specs.outfile, "imgs/mandel-%d.jpg", i);
-        specs.xscale *= DECAY_RATE;
-        specs.xcenter = FOCAL_X - FOCAL_X * specs.xscale / DEFAULT_SCALE;
-        generate(specs);
-    }
     while(wait(NULL) > 0);
 
-    if (pid == 0){
-        char command[256];
-        int framerate = N_IMGS / VIDEO_LENGTH;
+    sem_destroy(active_procs);
+    char command[256];
+    int framerate = N_IMGS / VIDEO_LENGTH;
 
-        sprintf(command, "ffmpeg -framerate %d -i imgs/mandel-%cd.jpg -r %d mandel%dfps.mpg",
-                    framerate, '%', N_IMGS, framerate);
+    sprintf(command, "ffmpeg -framerate %d -i imgs/mandel-%cd.jpg -r %d mandel%dfps.mpg",
+                framerate, '%', N_IMGS, framerate);
 
-        system(command);
-    }
+    system(command);
 
     return 0;
 }
